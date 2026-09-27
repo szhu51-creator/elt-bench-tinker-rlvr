@@ -10,7 +10,7 @@ requires-python = ">=3.11"
 dependencies = ["duckdb>=1.1", "pandas>=2.0", "numpy>=1.24", "PyYAML>=6.0"]
 
 [project.optional-dependencies]
-train = ["tinker_cookbook==0.5.7", "tinker>=0.23.0", "chz>=0.4.0"]
+train = ["tinker_cookbook==0.5.7", "tinker>=0.23.0", "chz>=0.4.0", "truststore>=0.10.0"]
 snowflake = ["snowflake-connector-python>=3.0"]
 test = ["pytest>=8.0"]
 

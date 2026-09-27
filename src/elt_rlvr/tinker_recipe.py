@@ -4,8 +4,15 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import sys
 from collections.abc import Sequence
 from pathlib import Path
+
+if sys.platform == "win32":
+    # Use the Windows certificate store for model tokenizer downloads and API TLS.
+    import truststore
+
+    truststore.inject_into_ssl()
 
 import chz
 

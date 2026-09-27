@@ -42,8 +42,8 @@ Terraform and waits for Airbyte syncs.
 
 ## One Tinker RL optimization step
 
-Install the optional training dependencies, set `TINKER_API_KEY` in your
-environment, and run:
+Install the optional training dependencies, authenticate with `tinker auth
+login` (or set `TINKER_API_KEY`), and run:
 
 ```bash
 pip install -e '.[train,test]'
