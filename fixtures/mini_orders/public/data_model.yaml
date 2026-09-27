@@ -1,0 +1,12 @@
+models:
+  - name: customer_totals
+    description: One row per customer, including customers without orders.
+    columns:
+      - name: customer_id
+        description: Customer identifier.
+      - name: customer_name
+        description: Customer name.
+      - name: order_count
+        description: Number of orders, or 0.
+      - name: total_spend
+        description: Sum of order amounts, or 0.

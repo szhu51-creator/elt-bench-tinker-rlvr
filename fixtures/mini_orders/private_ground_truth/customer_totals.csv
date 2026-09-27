@@ -1,0 +1,4 @@
+customer_id,customer_name,order_count,total_spend
+1,Ada,2,15
+2,Ben,1,7
+3,Cy,0,0

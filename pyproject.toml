@@ -1,0 +1,24 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "elt-bench-tinker-rlvr"
+version = "0.1.0"
+description = "Stateful ELT-Bench tool environment and Tinker RLVR recipe"
+requires-python = ">=3.11"
+dependencies = ["duckdb>=1.1", "pandas>=2.0", "numpy>=1.24", "PyYAML>=6.0"]
+
+[project.optional-dependencies]
+train = ["tinker_cookbook==0.5.7", "tinker>=0.23.0", "chz>=0.4.0"]
+snowflake = ["snowflake-connector-python>=3.0"]
+test = ["pytest>=8.0"]
+
+[project.scripts]
+elt-rlvr = "elt_rlvr.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

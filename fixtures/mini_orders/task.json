@@ -1,0 +1,12 @@
+{
+  "task_id": "mini_orders",
+  "sources": {
+    "customers": "sources/customers.csv",
+    "orders": "sources/orders.csv"
+  },
+  "raw_counts": {
+    "customers": 3,
+    "orders": 3
+  },
+  "targets": ["customer_totals"]
+}

@@ -1,0 +1,14 @@
+*.duckdb
+*.duckdb.wal
+__pycache__/
+.pytest_cache/
+build/
+*.egg-info/
+.venv/
+run_artifacts/
+*.log
+*.tfstate*
+.terraform/
+*.tfvars
+**/*_credential.json
+**/profiles.yml
