@@ -34,8 +34,12 @@ class ELTEpisode:
             self.warehouse: Warehouse = DuckDBWarehouse(spec, self.run_dir)
         elif spec.destination == "snowflake":
             self.runtime = OfficialRuntime(spec, self.run_dir, image=image, network=network)
-            self.runtime.start()
-            self.warehouse = SnowflakeWarehouse(spec)
+            try:
+                self.runtime.start()
+                self.warehouse = SnowflakeWarehouse(spec)
+            except BaseException:
+                self.runtime.close()
+                raise
         else:
             raise ValueError(f"Unsupported destination: {spec.destination}")
         self.models: dict[str, str] = {}
@@ -162,6 +166,8 @@ class ELTEpisode:
         return round(reward, 6), metrics
 
     def close(self) -> None:
-        self.warehouse.close()
-        if self.runtime:
-            self.runtime.close()
+        try:
+            self.warehouse.close()
+        finally:
+            if self.runtime:
+                self.runtime.close()

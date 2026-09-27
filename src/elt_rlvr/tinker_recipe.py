@@ -173,12 +173,14 @@ class _SerializedOfficialEnv(Env):
             raise
 
     def _finish(self):
-        if self.episode is not None:
-            self.episode.close()
-            self.episode = None
-        if self._held:
-            _OFFICIAL_LOCK.release()
-            self._held = False
+        try:
+            if self.episode is not None:
+                self.episode.close()
+                self.episode = None
+        finally:
+            if self._held:
+                _OFFICIAL_LOCK.release()
+                self._held = False
 
 
 class ELTGroupBuilder(EnvGroupBuilder):
