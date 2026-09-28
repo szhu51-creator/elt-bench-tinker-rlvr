@@ -8,6 +8,7 @@ from types import SimpleNamespace
 import pytest
 
 from elt_rlvr.backend import SnowflakeWarehouse
+from elt_rlvr.airbyte_plan import render_snowflake_plan
 from elt_rlvr.episode import ELTEpisode
 from elt_rlvr.official import OfficialRuntime
 from elt_rlvr.reward import compare_tables
@@ -357,3 +358,26 @@ def test_terraform_tool_normalizes_task_paths_without_escape(tmp_path):
     finally:
         runtime.started = False
         runtime.close()
+
+
+def test_structured_airbyte_plan_uses_declared_sources_and_config_references(tmp_path):
+    from dataclasses import replace
+    import yaml
+
+    spec, config_path = _official_spec(tmp_path)
+    config = yaml.safe_load(config_path.read_text(encoding="utf-8"))
+    config["custom_api"] = {"config": {"tables": ["cars"], "configuration": {}}}
+    config["flat_files"] = [{"table": "train", "format": "csv", "path": "/local/train.csv"}]
+    config_path.write_text(yaml.safe_dump(config), encoding="utf-8")
+    spec = replace(spec, expected_raw_counts={"cars": 63, "train": 20})
+    plan = render_snowflake_plan(spec, ["cars", "train"], "run_123")
+    assert 'resource "airbyte_source_custom" "api"' in plan
+    assert 'resource "airbyte_source_file" "train"' in plan
+    assert plan.count('resource "airbyte_connection"') == 2
+    assert "local.cfg.snowflake.config.password" in plan
+    assert "template-password" not in plan
+    assert "airbyte-test-password" not in plan
+    with pytest.raises(ValueError, match="task-declared"):
+        render_snowflake_plan(spec, ["other"], "run_123")
+    with pytest.raises(ValueError, match="without duplicates"):
+        render_snowflake_plan(spec, ["cars", "cars"], "run_123")

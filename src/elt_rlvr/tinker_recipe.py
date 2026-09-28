@@ -34,15 +34,12 @@ use execution feedback to repair failures, then call submit_pipeline. The
 warehouse state, not your final explanation, determines reward. Ground truth
 is private. Never claim success without running the pipeline."""
 
-OFFICIAL_PROMPT = """For Snowflake tasks, call write_terraform with filename
-pipeline.tf (or elt/pipeline.tf). Read config.yaml and elt/main.tf first.
-Use locals { cfg = yamldecode(file("../config.yaml")) } and reference its
-configured values. Airbyte provider 0.6.5 resource types are
-airbyte_source_custom, airbyte_source_file, airbyte_destination_snowflake,
-and airbyte_connection. Each connection needs source_id, destination_id,
-configurations.streams, and a manual schedule. Run run_el, inspect the raw
-tables, write the requested dbt SELECT models, run_transforms, and submit.
-Do not invent credentials or return a prose-only answer."""
+OFFICIAL_PROMPT = """For Snowflake tasks, inspect the declared raw source names,
+then call configure_el with those names. This writes a task-specific Airbyte
+plan using the public source metadata. Call run_el to sync the selected streams,
+inspect the raw tables, write the requested dbt SELECT models, run_transforms,
+and submit_pipeline. The warehouse result, not a prose answer, is graded.
+Use write_terraform only if a source type is unsupported by configure_el."""
 
 
 def _rollout_config(max_turns: int) -> RolloutConfig:
@@ -108,8 +105,14 @@ def _make_env(episode: ELTEpisode, model_name: str, max_turns: int) -> Env:
         tools[2:2] = [configure_el, preview_sql]
     else:
         @tool
+        async def configure_el(tables: list[str]):
+            """Select task-declared API or local CSV streams and write their Airbyte source, Snowflake destination, and connection plan."""
+            result = await asyncio.to_thread(episode.act, "configure_el", tables=tables)
+            return simple_tool_result(result.observation)
+
+        @tool
         async def write_terraform(filename: str, content: str):
-            """Configure Airbyte source, destination, and connections. Use filename pipeline.tf; Terraform writes it under elt/. Reference config.yaml through yamldecode."""
+            """Advanced fallback for unsupported source types: write Airbyte HCL under elt/. Reference config.yaml through yamldecode."""
             result = await asyncio.to_thread(episode.act, "configure_el", filename=filename, content=content)
             return simple_tool_result(result.observation)
 
@@ -124,7 +127,7 @@ def _make_env(episode: ELTEpisode, model_name: str, max_turns: int) -> Env:
             """Inspect up to 20 rows of a declared raw or target table in this task."""
             result = await asyncio.to_thread(episode.act, "preview_table", table=table)
             return simple_tool_result(result.observation)
-        tools[2:2] = [write_terraform, run_el, preview_table]
+        tools[2:2] = [configure_el, write_terraform, run_el, preview_table]
 
     prefix = renderer.create_conversation_prefix_with_tools(
         tools=[item.to_spec() for item in tools],

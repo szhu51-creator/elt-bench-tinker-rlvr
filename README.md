@@ -35,10 +35,12 @@ Each action is a JSON object with a `tool` key and the tool arguments, for
 example `{"tool":"configure_el","tables":["customers","orders"]}`. The tool
 names are `inspect_task`, `read_file`, `configure_el`, `run_el`, `write_model`,
 `run_transforms`, `preview_sql` (local), `preview_table` (official), and
-`submit_pipeline`. `configure_el` loads
-task-declared CSVs in DuckDB; on official Snowflake tasks it writes a new
-Airbyte Terraform file with `filename` and `content`, then `run_el` applies
-Terraform and waits for Airbyte syncs.
+`submit_pipeline`. `configure_el(tables=[...])` loads task-declared CSVs in
+DuckDB. On official Snowflake tasks, it builds an Airbyte Terraform plan from
+task-declared custom API and local CSV sources, using references to the private
+per-rollout configuration for credentials. `run_el` applies the plan and waits
+for Airbyte syncs. For an unsupported source type, `write_terraform` accepts
+bounded raw HCL as an advanced fallback.
 
 ## One Tinker RL optimization step
 
@@ -109,8 +111,9 @@ each rollout, exactly as ELT-Bench's `agents/common.prepare_destination` does.
 Rollouts for one task are serialized to prevent their resets, Airbyte jobs,
 and grading from interfering. Only generated task inputs enter the Docker
 container; ground truth and the host credential JSON stay outside. The
-container can write only the task workspace. The model can write an Airbyte
-Terraform file and target dbt model SQL, run the fixed Terraform/Airbyte/dbt
+container can write only the task workspace. The model can select source
+streams, write an Airbyte Terraform file when needed, and write target dbt
+model SQL, then run the fixed Terraform/Airbyte/dbt
 commands, inspect read-only warehouse queries, then submit.
 
 The Snowflake reset uses a host-only administrative credential and grants the
@@ -188,9 +191,11 @@ truth. `ELTEpisode` and the Tinker bridge stay unchanged.
 
 The local DuckDB test, official `trains` Airbyte/Snowflake/dbt replay with
 reward `1.0`, and one-step Tinker optimizations on both local and official
-tasks have run; see [VALIDATION.md](VALIDATION.md) for results. The official
-4B and 9B sampled policies received zero reward, so model quality remains a
-training limitation. The Terraform text filter narrows
+tasks have run; see [VALIDATION.md](VALIDATION.md) for results. Earlier
+official 4B and 9B sampled policies received zero reward with raw HCL. With
+structured source selection, a 9B group of two completed EL and submission
+with mean execution reward `0.885714`, below the full target score. One step
+does not establish convergence or transfer to other tasks. The Terraform text filter narrows
 the model's tool surface but is not a substitute for a restricted Snowflake
 role, isolated Airbyte account, or Docker/network policy in a production
 training deployment. Train with benchmark tasks that are disjoint from the

@@ -23,6 +23,7 @@ The model never receives private ground-truth CSVs or grading queries.
 | --- | --- |
 | `TaskSpec` | Loads a local fixture or generated official Snowflake bundle; separates public inputs and private grading data. |
 | `ELTEpisode` | Owns one mutable rollout, validates tool actions, records successful EL and dbt execution, and handles termination. |
+| `airbyte_plan.py` | Compiles declared custom API and local CSV streams into a task-scoped Airbyte Terraform plan with credential references. |
 | `DuckDBWarehouse` | Local OLAP destination, task-declared CSV extraction/loading, SELECT model materialization, external file access disabled. |
 | `OfficialRuntime` + `SnowflakeWarehouse` | Uses the benchmark reset helper or a delegated task-schema reset, Docker execution image, Terraform/Airbyte/dbt, and destination-specific query mapping. |
 | `reward.py` | Executes warehouse queries and compares them to private target CSVs with exact row counts and ELT-Bench-compatible value tolerance. |
@@ -52,6 +53,9 @@ granting points for tool use would incentivize empty or redundant actions.
   delegated mode uses the EL role after a one-time database grant.
 - The model cannot run an arbitrary shell command. It can only write bounded
   Airbyte Terraform and SELECT dbt model text, then invoke fixed commands.
+  For supported Snowflake sources, it selects stream names and the environment
+  generates the Airbyte plan, avoiding provider-schema guesswork. Unsupported
+  source types can use the bounded raw-HCL fallback.
   The Terraform tool rejects provisioners, modules, external resources,
   outputs, and literal configured credentials. A least-privilege warehouse
   role and network isolation remain required defense in depth.

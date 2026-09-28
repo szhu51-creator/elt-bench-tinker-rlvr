@@ -233,6 +233,15 @@ class OfficialRuntime:
         (self.root / "elt" / basename).write_text(text, encoding="utf-8")
         return f"wrote elt/{basename}"
 
+    def configure_sources(self, tables: list[str]) -> str:
+        """Render an Airbyte plan from the task's declared source metadata."""
+        from .airbyte_plan import render_snowflake_plan
+
+        run_name = "run_" + self.container.rsplit("-", 1)[-1]
+        plan = render_snowflake_plan(self.spec, tables, run_name)
+        self.write_terraform("pipeline.tf", plan)
+        return f"configured Airbyte sources: {', '.join(tables)}"
+
     def run_extract_load(self) -> str:
         if not self.started:
             raise RuntimeError("Runtime is not started")

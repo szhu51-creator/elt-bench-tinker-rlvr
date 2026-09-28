@@ -70,6 +70,24 @@ optimization path, not evidence that these base models learned the task.
 The separate deterministic official replay above verifies that a valid
 end-to-end policy can earn reward `1.0`.
 
+A structured Airbyte plan tool was then added for official tasks. It derives
+the custom API and local CSV sources, Snowflake destination, and connections
+from the task's public source names, while keeping credentials as references
+to the per-rollout configuration. The generated `trains` plan passed
+`terraform validate` with the real Airbyte provider 0.6.5. A second live
+official replay using `configure_el(tables=["cars", "train"])` completed both
+Airbyte syncs, dbt, and private warehouse grading with reward `1.0`. The full
+suite passed 15 tests, including plan generation and source validation.
+
+A new live Tinker one-step optimization used the structured tool on the same
+official `trains` task with `Qwen/Qwen3.5-9B`, group size 2, and a 16-turn
+budget. Both sampled trajectories completed EL, dbt, and terminal submission.
+The group mean execution reward was `0.885714`; the raw-table fraction was
+`1.0` and target-column fraction was `0.857143`. Tinker saved a training-state
+and sampler checkpoint and reported successful completion. This shows a useful
+positive official-task training signal, but the sampled policy did not reach
+the full target score and one step does not establish learning or transfer.
+
 This machine's Norton HTTPS scanner re-signs Snowflake certificates seen by
 Docker and kind pods. The host's trusted public Norton root was exported to a
 private local file, added to a private CA bundle for the ELT execution image,

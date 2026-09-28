@@ -87,6 +87,11 @@ class ELTEpisode:
                     self.el_succeeded = set(self.spec.expected_raw_counts).issubset(loaded)
                     return Transition(json.dumps({"loaded": loaded}))
                 assert self.runtime is not None
+                if "tables" in kwargs:
+                    tables = kwargs["tables"]
+                    if not isinstance(tables, list) or not all(isinstance(x, str) for x in tables):
+                        raise ValueError("tables must be a list of source names")
+                    return Transition(self.runtime.configure_sources(tables))
                 return Transition(self.runtime.write_terraform(str(kwargs["filename"]), str(kwargs["content"])))
             if name == "run_el":
                 if self.runtime is None:
