@@ -37,7 +37,7 @@ names are `inspect_task`, `read_file`, `configure_el`, `run_el`, `write_model`,
 `run_transforms`, `preview_sql` (local), `preview_table` (official), and
 `submit_pipeline`. `configure_el(tables=[...])` loads task-declared CSVs in
 DuckDB. On official Snowflake tasks, it builds an Airbyte Terraform plan from
-task-declared custom API and local CSV sources, using references to the private
+task-declared custom API, local CSV, and public HTTPS CSV sources, using references to the private
 per-rollout configuration for credentials. `run_el` applies the plan and waits
 for Airbyte syncs. For an unsupported source type, `write_terraform` accepts
 bounded raw HCL as an advanced fallback.
@@ -195,11 +195,14 @@ tasks have run; see [VALIDATION.md](VALIDATION.md) for results. Earlier
 official 4B and 9B sampled policies received zero reward with raw HCL. With
 structured source selection, a 9B group of two completed EL and submission
 with mean execution reward `0.885714`, below the full target score. One step
-does not establish convergence or transfer to other tasks. The Terraform text filter narrows
-the model's tool surface but is not a substitute for a restricted Snowflake
-role, isolated Airbyte account, or Docker/network policy in a production
+does not establish convergence or transfer to other tasks. The Terraform text
+filter narrows the model's tool surface but is not a substitute for a
+restricted Snowflake role, isolated Airbyte account, or Docker/network policy in a production
 training deployment. Train with benchmark tasks that are disjoint from the
 evaluation set to reduce answer contamination.
+The upstream `trains` HTTPS CSV source generates valid provider HCL, but this
+machine's intercepted TLS path required a local mirror for the live sync; the
+unmodified HTTPS path has not been synced end to end here.
 
 See [DESIGN.md](DESIGN.md) for the concise implementation design.
 See [PROJECT_PLAN.md](PROJECT_PLAN.md) for current progress and the Windows

@@ -11,7 +11,7 @@ from .spec import TaskSpec
 
 
 def render_snowflake_plan(spec: TaskSpec, selected: list[str], run_name: str) -> str:
-    """Configure selected public API/local CSV streams without exposing credentials."""
+    """Configure declared API, local CSV, or public HTTPS CSV streams."""
     if spec.destination != "snowflake":
         raise ValueError("This Airbyte plan requires a Snowflake task")
     if not selected or len(selected) != len(set(selected)):
@@ -27,11 +27,19 @@ def render_snowflake_plan(spec: TaskSpec, selected: list[str], run_name: str) ->
     unsupported = set(selected) - api_names - set(files)
     if unsupported:
         raise ValueError(f"No supported public API/local CSV source for: {sorted(unsupported)}")
+    providers: dict[str, str] = {}
     for name in selected:
         if name in files:
             entry = files[name][1]
-            if entry.get("format") != "csv" or not str(entry.get("path", "")).startswith("/local/"):
-                raise ValueError(f"Only local CSV file sources are supported: {name}")
+            path = str(entry.get("path", ""))
+            if entry.get("format") != "csv":
+                raise ValueError(f"Only CSV file sources are supported: {name}")
+            if path.startswith("/local/"):
+                providers[name] = "local_filesystem_limited"
+            elif path.startswith("https://"):
+                providers[name] = "https_public_web"
+            else:
+                raise ValueError(f"Only local or public HTTPS CSV sources are supported: {name}")
     valid_identifier(spec.task_id)
     valid_identifier(run_name)
     prefix = f"elt-bench-{spec.task_id}-{run_name}"
@@ -81,7 +89,7 @@ def render_snowflake_plan(spec: TaskSpec, selected: list[str], run_name: str) ->
             f'    dataset_name = {json.dumps(name)}',
             '    format = "csv"',
             f'    url = local.cfg.flat_files[{index}].path',
-            '    provider = { local_filesystem_limited = {} }',
+            f'    provider = {{ {providers[name]} = {{}} }}',
             '  }',
             '}',
         ]

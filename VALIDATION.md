@@ -71,13 +71,23 @@ The separate deterministic official replay above verifies that a valid
 end-to-end policy can earn reward `1.0`.
 
 A structured Airbyte plan tool was then added for official tasks. It derives
-the custom API and local CSV sources, Snowflake destination, and connections
+the custom API and CSV sources, Snowflake destination, and connections
 from the task's public source names, while keeping credentials as references
 to the per-rollout configuration. The generated `trains` plan passed
 `terraform validate` with the real Airbyte provider 0.6.5. A second live
 official replay using `configure_el(tables=["cars", "train"])` completed both
 Airbyte syncs, dbt, and private warehouse grading with reward `1.0`. The full
 suite passed 15 tests, including plan generation and source validation.
+
+An audit against the professor's source document found that the upstream
+`trains` file source uses a public Google Drive HTTPS URL, while this machine's
+live run used a byte-equivalent local mirror to work around intercepted TLS.
+The structured plan now selects Airbyte's `https_public_web` provider for the
+unmodified upstream URL and `local_filesystem_limited` for local paths. The
+plan generated with the upstream URL passed `terraform validate` against the
+real Airbyte provider 0.6.5. The credential-free suite now passes 16 tests,
+including an HTTPS source test. The unmodified HTTPS source has not been synced
+end to end on this machine because of its local TLS interception.
 
 A new live Tinker one-step optimization used the structured tool on the same
 official `trains` task with `Qwen/Qwen3.5-9B`, group size 2, and a 16-turn

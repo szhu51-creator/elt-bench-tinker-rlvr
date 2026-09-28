@@ -23,7 +23,7 @@ The model never receives private ground-truth CSVs or grading queries.
 | --- | --- |
 | `TaskSpec` | Loads a local fixture or generated official Snowflake bundle; separates public inputs and private grading data. |
 | `ELTEpisode` | Owns one mutable rollout, validates tool actions, records successful EL and dbt execution, and handles termination. |
-| `airbyte_plan.py` | Compiles declared custom API and local CSV streams into a task-scoped Airbyte Terraform plan with credential references. |
+| `airbyte_plan.py` | Compiles declared custom API, local CSV, and public HTTPS CSV streams into a task-scoped Airbyte Terraform plan with credential references. |
 | `DuckDBWarehouse` | Local OLAP destination, task-declared CSV extraction/loading, SELECT model materialization, external file access disabled. |
 | `OfficialRuntime` + `SnowflakeWarehouse` | Uses the benchmark reset helper or a delegated task-schema reset, Docker execution image, Terraform/Airbyte/dbt, and destination-specific query mapping. |
 | `reward.py` | Executes warehouse queries and compares them to private target CSVs with exact row counts and ELT-Bench-compatible value tolerance. |

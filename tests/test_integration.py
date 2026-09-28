@@ -381,3 +381,26 @@ def test_structured_airbyte_plan_uses_declared_sources_and_config_references(tmp
         render_snowflake_plan(spec, ["other"], "run_123")
     with pytest.raises(ValueError, match="without duplicates"):
         render_snowflake_plan(spec, ["cars", "cars"], "run_123")
+
+
+def test_structured_airbyte_plan_supports_official_https_csv(tmp_path):
+    from dataclasses import replace
+    import yaml
+
+    spec, config_path = _official_spec(tmp_path)
+    config = yaml.safe_load(config_path.read_text(encoding="utf-8"))
+    config["flat_files"] = [{
+        "table": "train", "format": "csv",
+        "path": "https://drive.google.com/uc?export=download&id=public-file",
+    }]
+    config_path.write_text(yaml.safe_dump(config), encoding="utf-8")
+    spec = replace(spec, expected_raw_counts={"train": 20})
+    plan = render_snowflake_plan(spec, ["train"], "run_123")
+    assert "https_public_web = {}" in plan
+    assert "url = local.cfg.flat_files[0].path" in plan
+    assert "drive.google.com" not in plan
+
+    config["flat_files"][0]["path"] = "http://insecure.example/train.csv"
+    config_path.write_text(yaml.safe_dump(config), encoding="utf-8")
+    with pytest.raises(ValueError, match="public HTTPS"):
+        render_snowflake_plan(spec, ["train"], "run_123")

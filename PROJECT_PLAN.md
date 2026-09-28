@@ -8,7 +8,7 @@ design document is linked from `README.md`.
 
 - Stateful tool environment, destination adapter, execution-derived reward,
   and Tinker cookbook training recipe.
-- Credential-free end-to-end fixture and 15 passing integration/security tests.
+- Credential-free end-to-end fixture and 16 passing integration/security tests.
 - One live Tinker optimizer step with four local fixture rollouts, each reward
   `1.0`. The equal rewards do not establish model improvement.
 - Windows Docker Desktop, Ubuntu WSL integration, Airbyte 2.3.0, and the
@@ -28,6 +28,9 @@ design document is linked from `README.md`.
   warehouse grading with execution reward `1.0`.
 - A structured source-selection tool generated valid Airbyte HCL for the
   official task and completed a second live replay with reward `1.0`.
+- The same tool accepts the upstream task's unmodified public HTTPS CSV source;
+  its plan passed `terraform validate` with Airbyte provider 0.6.5. An HTTPS
+  source test covers the branch without credentials.
 - Two one-step Tinker runs on the official task completed and saved checkpoints.
   The sampled 4B and 9B policies earned zero because their tool trajectories
   failed to complete valid Terraform and submission within the turn budget.
@@ -41,7 +44,9 @@ For a stronger research result, train on multiple disjoint official tasks and
 evaluate held-out full-pipeline success. This needs more task-specific source
 support, training time, and compute credits. The three specified validation
 paths have been executed, but one training step does not establish a general
-ELT-solving policy.
+ELT-solving policy. A live sync from the upstream `trains` HTTPS CSV URL also
+remains unverified on this machine because its network intercepts TLS; the
+upstream URL's generated Terraform plan has passed provider validation.
 
 The prepared benchmark sources and local Airbyte workspace survive ordinary
 Docker Desktop restarts. The dedicated source service is configured to

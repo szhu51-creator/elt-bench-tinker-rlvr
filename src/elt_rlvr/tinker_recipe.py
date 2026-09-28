@@ -106,7 +106,7 @@ def _make_env(episode: ELTEpisode, model_name: str, max_turns: int) -> Env:
     else:
         @tool
         async def configure_el(tables: list[str]):
-            """Select task-declared API or local CSV streams and write their Airbyte source, Snowflake destination, and connection plan."""
+            """Select task-declared API or CSV streams and write their Airbyte source, Snowflake destination, and connection plan."""
             result = await asyncio.to_thread(episode.act, "configure_el", tables=tables)
             return simple_tool_result(result.observation)
 
