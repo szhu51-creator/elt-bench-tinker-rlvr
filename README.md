@@ -80,6 +80,12 @@ These prerequisites follow the [official ELT-Bench setup](https://github.com/uiu
 6. Ensure the benchmark's `elt-docker_elt_network` Docker network and Airbyte
    services are running.
 
+Set `ELT_RLVR_SNOWFLAKE_EL_USER` and `ELT_RLVR_SNOWFLAKE_EL_PASSWORD` in the
+host environment to provide the Snowflake account used by Airbyte and dbt.
+Set both variables together. They override only the per-rollout copy of
+`config.yaml`; the official input bundle and host-only reset/grader credential
+file remain separate.
+
 Install the warehouse connector and check a task:
 
 ```bash

@@ -9,7 +9,7 @@ https://github.com/szhu51-creator/elt-bench-tinker-rlvr.
 ## Completed
 
 - [x] Stateful, tool-using ELT environment with a destination adapter boundary.
-- [x] DuckDB end-to-end fixture and six passing integration tests.
+- [x] DuckDB end-to-end fixture and nine passing integration/isolation tests.
 - [x] Execution-derived reward with private ground truth and EL completion gates.
 - [x] Tinker cookbook RL recipe; one live step on four local rollouts completed.
 - [x] Design document and self-contained repository published.
@@ -28,22 +28,31 @@ path is implemented but still requires a credentialed rollout.
    Docker client and server respond to `docker version`. The account owner
    reads and accepts Docker's service agreement on first launch.
 3. Install Airbyte Open Source with `abctl`, start its local services, and
-   import ELT-Bench's `setup/elt_snowflake.yaml` source manifest.
+   import and publish ELT-Bench's `setup/elt_snowflake.yaml` source manifest.
+   Record its workspace and source-definition IDs in the official Airbyte
+   credential file locally.
 4. In the dedicated Snowflake trial account, create the benchmark role, user,
    and small auto-suspending warehouse from ELT-Bench's `setup/destination/setup.sql`.
    Replace the upstream example password with a unique secret before running
    the SQL. Store Snowflake and Airbyte credentials only in the official
    benchmark's local credential JSON files, never in this repository or chat.
-5. Generate the official `books` input bundle, start the benchmark's source
-   containers, and download Snowflake ground-truth CSVs. Review the upstream
-   setup script before running it; the checked-out version contains an
-   incomplete `unzip` line and may need a manual equivalent.
-6. Build the benchmark execution image and run
+5. Download and unpack the upstream source-data archives, start its source
+   containers, and initialize the selected task's databases. Do not run the
+   checked-out `setup/elt_setup.sh` unchanged: line 14 has a bare `unzip`, and
+   lines 20-22 pass the literal `CURRENT_DIR` instead of `"$CURRENT_DIR"`.
+   Its full setup loops over 100 tasks and drops/recreates Mongo databases;
+   use a selected-task procedure for an initial smoke test. The public
+   Snowflake ground-truth CSVs for `books` are already staged locally.
+6. Generate the official `books` input bundle using populated local credential
+   files. Set both `ELT_RLVR_SNOWFLAKE_EL_USER` and
+   `ELT_RLVR_SNOWFLAKE_EL_PASSWORD` on the host to match the Snowflake EL user
+   created in step 4; never paste either value into chat or commit it.
+7. Build the benchmark execution image and run
    `elt-rlvr check-official --official-repo <path> --task-id books`.
-7. Run a credentialed `books` rollout. Inspect the submitted Terraform/dbt
+8. Run a credentialed `books` rollout. Inspect the submitted Terraform/dbt
    artifacts and warehouse reward; fix integration issues and record the
    outcome in `VALIDATION.md`.
-8. Run at least one Tinker step on the official task with execution rewards.
+9. Run at least one Tinker step on the official task with execution rewards.
    Use varied tasks for any larger training experiment and compare held-out
    results before claiming improvement.
 

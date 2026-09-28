@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import shutil
 import re
+import os
 import subprocess
 import sys
 import uuid
@@ -35,36 +36,61 @@ class OfficialRuntime:
         if not self.spec.credential_path:
             raise ValueError("A Snowflake credential path is required")
         self.root.mkdir(parents=True, exist_ok=False)
-        for item in self.spec.public_dir.iterdir():
-            if item.name.endswith("_credential.json"):
-                continue
-            dest = self.root / item.name
-            if item.is_dir():
-                shutil.copytree(item, dest)
-            else:
-                shutil.copy2(item, dest)
-        shutil.copy2(Path(__file__).with_name("airbyte_sync.py"), self.root / "rlvr_airbyte_sync.py")
-        self._write_dbt_scaffold()
-        # Reuse the benchmark's destination reset exactly; no grader files enter the container.
-        agents_path = self.spec.official_repo / "agents"
-        sys.path.insert(0, str(agents_path))
         try:
-            from common import prepare_destination
-            prepare_destination("snowflake", self.spec.public_dir, self.spec.credential_path)
-        finally:
-            sys.path.remove(str(agents_path))
-        cache = self.root.parent / "terraform-plugin-cache"
-        cache.mkdir(parents=True, exist_ok=True)
-        cmd = [
-            "docker", "run", "-d", "--rm", "--name", self.container,
-            "--network", self.network,
-            "-v", f"{self.root}:/workspace",
-            "-v", f"{cache}:/tf-plugin-cache",
-            "-e", "TF_PLUGIN_CACHE_DIR=/tf-plugin-cache",
-            "-w", "/workspace", self.image, "sleep", "infinity",
-        ]
-        self._command(cmd, timeout=60)
-        self.started = True
+            for item in self.spec.public_dir.iterdir():
+                if item.name.endswith("_credential.json"):
+                    continue
+                dest = self.root / item.name
+                if item.is_dir():
+                    shutil.copytree(item, dest)
+                else:
+                    shutil.copy2(item, dest)
+            self._apply_el_credentials()
+            shutil.copy2(Path(__file__).with_name("airbyte_sync.py"), self.root / "rlvr_airbyte_sync.py")
+            self._write_dbt_scaffold()
+            # Reuse the benchmark's destination reset exactly; no grader files enter the container.
+            agents_path = self.spec.official_repo / "agents"
+            sys.path.insert(0, str(agents_path))
+            try:
+                from common import prepare_destination
+                prepare_destination("snowflake", self.spec.public_dir, self.spec.credential_path)
+            finally:
+                sys.path.remove(str(agents_path))
+            cache = self.root.parent / "terraform-plugin-cache"
+            cache.mkdir(parents=True, exist_ok=True)
+            cmd = [
+                "docker", "run", "-d", "--rm", "--name", self.container,
+                "--network", self.network,
+                "-v", f"{self.root}:/workspace",
+                "-v", f"{cache}:/tf-plugin-cache",
+                "-e", "TF_PLUGIN_CACHE_DIR=/tf-plugin-cache",
+                "-w", "/workspace", self.image, "sleep", "infinity",
+            ]
+            self._command(cmd, timeout=60)
+            self.started = True
+        except BaseException:
+            self.close()
+            raise
+
+    def _apply_el_credentials(self) -> None:
+        """Overlay optional EL-only credentials onto this rollout's private copy."""
+        user = os.environ.get("ELT_RLVR_SNOWFLAKE_EL_USER")
+        password = os.environ.get("ELT_RLVR_SNOWFLAKE_EL_PASSWORD")
+        if user is None and password is None:
+            return
+        if not user or not password:
+            raise ValueError(
+                "Set both ELT_RLVR_SNOWFLAKE_EL_USER and "
+                "ELT_RLVR_SNOWFLAKE_EL_PASSWORD, or neither"
+            )
+
+        config_path = self.root / "config.yaml"
+        config = yaml.safe_load(config_path.read_text(encoding="utf-8"))
+        warehouse = config["snowflake"]["config"]
+        warehouse["username"] = user
+        warehouse["password"] = password
+        config_path.write_text(yaml.safe_dump(config, sort_keys=False), encoding="utf-8")
+        self._secrets.append(password)
 
     def _write_dbt_scaffold(self) -> None:
         cfg = yaml.safe_load((self.root / "config.yaml").read_text(encoding="utf-8"))
@@ -160,10 +186,12 @@ class OfficialRuntime:
         ], timeout=900)
 
     def close(self) -> None:
-        if self.started:
-            subprocess.run(["docker", "rm", "-f", self.container], capture_output=True, timeout=30)
+        try:
+            if self.started:
+                subprocess.run(["docker", "rm", "-f", self.container], capture_output=True, timeout=30)
+        finally:
             self.started = False
-        # Keep the submitted HCL and SQL for review, remove copied secrets/state.
-        for file in (self.root / "config.yaml", self.root / "elt/profiles.yml",
-                     self.root / "elt/terraform.tfstate", self.root / "elt/terraform.tfstate.backup"):
-            file.unlink(missing_ok=True)
+            # Keep the submitted HCL and SQL for review, remove copied secrets/state.
+            for file in (self.root / "config.yaml", self.root / "elt/profiles.yml",
+                         self.root / "elt/terraform.tfstate", self.root / "elt/terraform.tfstate.backup"):
+                file.unlink(missing_ok=True)

@@ -1,8 +1,14 @@
 from pathlib import Path
 
 import pandas as pd
+import json
+import sys
+from types import SimpleNamespace
+
+import pytest
 
 from elt_rlvr.episode import ELTEpisode
+from elt_rlvr.official import OfficialRuntime
 from elt_rlvr.reward import compare_tables
 from elt_rlvr.spec import TaskSpec
 
@@ -81,3 +87,116 @@ def test_rollouts_have_isolated_warehouses(tmp_path):
     finally:
         first.close()
         second.close()
+
+
+def _official_spec(tmp_path):
+    repo = tmp_path / "official"
+    public_dir = repo / "inputs" / "books"
+    (public_dir / "elt").mkdir(parents=True)
+    (repo / "agents").mkdir()
+    config = {
+        "Airbyte": {"config": {"password": "airbyte-test-password"}},
+        "snowflake": {"config": {
+            "account": "account-test", "database": "books", "schema": "AIRBYTE_SCHEMA",
+            "role": "AIRBYTE_ROLE", "warehouse": "AIRBYTE_WAREHOUSE",
+            "username": "template-user", "password": "template-password",
+        }},
+    }
+    import yaml
+
+    config_path = public_dir / "config.yaml"
+    config_path.write_text(yaml.safe_dump(config), encoding="utf-8")
+    credential_path = repo / "setup" / "destination" / "snowflake_credential.json"
+    credential_path.parent.mkdir(parents=True)
+    credential_path.write_text(json.dumps({"user": "reset-user"}), encoding="utf-8")
+    return TaskSpec(
+        task_id="books", destination="snowflake", public_dir=public_dir,
+        expected_raw_counts={}, target_tables=(), ground_truth_dir=repo / "ground_truth",
+        official_repo=repo, credential_path=credential_path,
+    ), config_path
+
+
+def _stub_official_prerequisites(monkeypatch):
+    monkeypatch.setattr("elt_rlvr.official.shutil.which", lambda _name: "docker")
+    monkeypatch.setitem(sys.modules, "common", SimpleNamespace(prepare_destination=lambda *_args: None))
+
+
+def test_official_el_credentials_override_private_rollout_copy(tmp_path, monkeypatch):
+    spec, public_config_path = _official_spec(tmp_path)
+    public_config_before = public_config_path.read_text(encoding="utf-8")
+    el_user = "rollout-el-user"
+    el_password = "rollout-el-password-secret"
+    monkeypatch.setenv("ELT_RLVR_SNOWFLAKE_EL_USER", el_user)
+    monkeypatch.setenv("ELT_RLVR_SNOWFLAKE_EL_PASSWORD", el_password)
+    _stub_official_prerequisites(monkeypatch)
+
+    runtime = OfficialRuntime(spec, tmp_path / "runs")
+    monkeypatch.setattr(runtime, "_command", lambda _argv, timeout: "container started")
+    runtime.start()
+    try:
+        import yaml
+
+        copied_config = yaml.safe_load((runtime.root / "config.yaml").read_text(encoding="utf-8"))
+        snowflake_config = copied_config["snowflake"]["config"]
+        assert snowflake_config["username"] == el_user
+        assert snowflake_config["password"] == el_password
+        profile = yaml.safe_load((runtime.root / "elt" / "profiles.yml").read_text(encoding="utf-8"))
+        output = profile["elt_models"]["outputs"]["dev"]
+        assert output["user"] == el_user
+        assert output["password"] == el_password
+        assert el_password in runtime._secrets
+        assert public_config_path.read_text(encoding="utf-8") == public_config_before
+        assert not (runtime.root / "snowflake_credential.json").exists()
+    finally:
+        runtime.started = False
+        runtime.close()
+
+
+def test_official_start_failure_cleans_copied_secrets_and_state(tmp_path, monkeypatch):
+    spec, public_config_path = _official_spec(tmp_path)
+    public_config_before = public_config_path.read_text(encoding="utf-8")
+    monkeypatch.setenv("ELT_RLVR_SNOWFLAKE_EL_USER", "rollout-el-user")
+    monkeypatch.setenv("ELT_RLVR_SNOWFLAKE_EL_PASSWORD", "rollout-el-password-secret")
+    _stub_official_prerequisites(monkeypatch)
+    runtime = OfficialRuntime(spec, tmp_path / "runs")
+
+    def fail_after_creating_state(_argv, timeout):
+        (runtime.root / "elt" / "terraform.tfstate").write_text("{}", encoding="utf-8")
+        (runtime.root / "elt" / "terraform.tfstate.backup").write_text("{}", encoding="utf-8")
+        raise RuntimeError("simulated container startup failure")
+
+    monkeypatch.setattr(runtime, "_command", fail_after_creating_state)
+    try:
+        runtime.start()
+        raise AssertionError("expected simulated startup failure")
+    except RuntimeError as exc:
+        assert "simulated container startup failure" in str(exc)
+
+    assert public_config_path.read_text(encoding="utf-8") == public_config_before
+    for sensitive_path in (
+        runtime.root / "config.yaml",
+        runtime.root / "elt" / "profiles.yml",
+        runtime.root / "elt" / "terraform.tfstate",
+        runtime.root / "elt" / "terraform.tfstate.backup",
+    ):
+        assert not sensitive_path.exists()
+
+
+def test_official_close_cleans_secrets_when_docker_remove_fails(tmp_path, monkeypatch):
+    spec, _ = _official_spec(tmp_path)
+    _stub_official_prerequisites(monkeypatch)
+    runtime = OfficialRuntime(spec, tmp_path / "runs")
+    monkeypatch.setattr(runtime, "_command", lambda _argv, timeout: "container started")
+    runtime.start()
+    (runtime.root / "elt" / "terraform.tfstate").write_text("secret state", encoding="utf-8")
+
+    def fail_remove(*_args, **_kwargs):
+        raise RuntimeError("docker remove unavailable")
+
+    monkeypatch.setattr("elt_rlvr.official.subprocess.run", fail_remove)
+    with pytest.raises(RuntimeError, match="docker remove unavailable"):
+        runtime.close()
+    assert not runtime.started
+    assert not (runtime.root / "config.yaml").exists()
+    assert not (runtime.root / "elt" / "profiles.yml").exists()
+    assert not (runtime.root / "elt" / "terraform.tfstate").exists()

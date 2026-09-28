@@ -1,8 +1,11 @@
 # Validation record
 
-On 2026-09-27, the credential-free DuckDB integration suite passed all six
-tests. `elt-rlvr demo-local` executed extraction/loading, a transformation,
-and terminal grading with reward `1.0`.
+On 2026-09-27, the credential-free DuckDB integration suite and Snowflake
+runtime isolation tests passed all nine tests. `elt-rlvr demo-local` executed
+extraction/loading, a transformation, and terminal grading with reward `1.0`.
+The Snowflake tests use fake credentials and stubbed external services; they
+verify that EL credentials affect only the private rollout copy and that
+copied secrets are cleaned on startup or Docker removal failures.
 
 One Tinker RL optimization step completed with the repository's local fixture:
 
@@ -18,6 +21,11 @@ checkpoints. The Python process exited successfully.
 
 This small fixture saturated: all four rewards were equal, so the batch does
 not demonstrate a useful relative-reward learning signal or improvement in
-model quality. Training should use a larger and more varied task set. The
-official Snowflake rollout still needs warehouse credentials and the official
-ELT-Bench Docker/Airbyte services; it was not run locally.
+model quality. Training should use a larger and more varied task set.
+
+The upstream input generator produced 100 task bundles in a dry run with blank
+account credentials. The `books` task specification parsed its 15 raw tables
+and three targets against downloaded public Snowflake ground-truth CSVs. This
+checks task structure only; it does not prove extraction, transformation, or
+grading on Snowflake. The official credentialed rollout still needs the
+Snowflake account, source data, Docker, and Airbyte services; it was not run.
