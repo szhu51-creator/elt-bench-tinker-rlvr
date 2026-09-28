@@ -142,9 +142,10 @@ truth. `ELTEpisode` and the Tinker bridge stay unchanged.
 
 ## Limits
 
-The local DuckDB test is fully exercised. Official Snowflake execution and a
-Tinker optimizer call require external credentials/services and are therefore
-not validated by the credential-free test. The Terraform text filter narrows
+The local DuckDB test and one Tinker optimizer step are exercised; see
+[VALIDATION.md](VALIDATION.md) for results. Official Snowflake execution
+requires warehouse credentials and Docker/Airbyte services and has not been
+run locally. The Terraform text filter narrows
 the model's tool surface but is not a substitute for a restricted Snowflake
 role, isolated Airbyte account, or Docker/network policy in a production
 training deployment. Train with benchmark tasks that are disjoint from the

@@ -266,6 +266,10 @@ async def _main(args: argparse.Namespace) -> None:
 
 
 def main() -> None:
+    if sys.platform == "win32":
+        # Tinker's background HTTP thread creates its own event loop; the
+        # selector policy avoids Proactor socket cancellation failures here.
+        asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
     parser = argparse.ArgumentParser(description="Train ELT RLVR with Tinker cookbook")
     parser.add_argument("--model", default="Qwen/Qwen3.5-4B")
     parser.add_argument("--run-root", default="run_artifacts")
