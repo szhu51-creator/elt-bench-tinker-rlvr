@@ -34,6 +34,16 @@ use execution feedback to repair failures, then call submit_pipeline. The
 warehouse state, not your final explanation, determines reward. Ground truth
 is private. Never claim success without running the pipeline."""
 
+OFFICIAL_PROMPT = """For Snowflake tasks, call write_terraform with filename
+pipeline.tf (or elt/pipeline.tf). Read config.yaml and elt/main.tf first.
+Use locals { cfg = yamldecode(file("../config.yaml")) } and reference its
+configured values. Airbyte provider 0.6.5 resource types are
+airbyte_source_custom, airbyte_source_file, airbyte_destination_snowflake,
+and airbyte_connection. Each connection needs source_id, destination_id,
+configurations.streams, and a manual schedule. Run run_el, inspect the raw
+tables, write the requested dbt SELECT models, run_transforms, and submit.
+Do not invent credentials or return a prose-only answer."""
+
 
 def _rollout_config(max_turns: int) -> RolloutConfig:
     return RolloutConfig(
@@ -99,7 +109,7 @@ def _make_env(episode: ELTEpisode, model_name: str, max_turns: int) -> Env:
     else:
         @tool
         async def write_terraform(filename: str, content: str):
-            """Configure Airbyte source, destination, and connections in a new elt/*.tf file; use config.yaml values through Terraform yamldecode."""
+            """Configure Airbyte source, destination, and connections. Use filename pipeline.tf; Terraform writes it under elt/. Reference config.yaml through yamldecode."""
             result = await asyncio.to_thread(episode.act, "configure_el", filename=filename, content=content)
             return simple_tool_result(result.observation)
 
@@ -117,7 +127,8 @@ def _make_env(episode: ELTEpisode, model_name: str, max_turns: int) -> Env:
         tools[2:2] = [write_terraform, run_el, preview_table]
 
     prefix = renderer.create_conversation_prefix_with_tools(
-        tools=[item.to_spec() for item in tools], system_prompt=SYSTEM_PROMPT,
+        tools=[item.to_spec() for item in tools],
+        system_prompt=SYSTEM_PROMPT + ("\n\n" + OFFICIAL_PROMPT if episode.spec.destination == "snowflake" else ""),
     )
     messages = prefix + [{"role": "user", "content": episode.spec.public_summary()}]
 

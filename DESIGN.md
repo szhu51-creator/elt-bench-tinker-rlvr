@@ -12,8 +12,8 @@ fresh execution container and reset warehouse namespace. Airbyte resources
 live in a shared local workspace; rollouts for a task are serialized.
 
 The initial prompt exposes the task's source names and model descriptions.
-Tools expose bounded reads of the generated input bundle, writes to one new
-Terraform file or target model SQL, fixed execution commands, and read-only
+Tools expose bounded reads of the generated input bundle, writes to task-local
+Terraform files or target model SQL, fixed execution commands, and read-only
 SQL previews. `submit_pipeline` or the rollout budget ends the episode.
 The model never receives private ground-truth CSVs or grading queries.
 
@@ -24,7 +24,7 @@ The model never receives private ground-truth CSVs or grading queries.
 | `TaskSpec` | Loads a local fixture or generated official Snowflake bundle; separates public inputs and private grading data. |
 | `ELTEpisode` | Owns one mutable rollout, validates tool actions, records successful EL and dbt execution, and handles termination. |
 | `DuckDBWarehouse` | Local OLAP destination, task-declared CSV extraction/loading, SELECT model materialization, external file access disabled. |
-| `OfficialRuntime` + `SnowflakeWarehouse` | Uses the benchmark reset helper, Docker execution image, Terraform/Airbyte/dbt, and destination-specific query mapping. |
+| `OfficialRuntime` + `SnowflakeWarehouse` | Uses the benchmark reset helper or a delegated task-schema reset, Docker execution image, Terraform/Airbyte/dbt, and destination-specific query mapping. |
 | `reward.py` | Executes warehouse queries and compares them to private target CSVs with exact row counts and ELT-Bench-compatible value tolerance. |
 | `tinker_recipe.py` | Reuses cookbook tool environment, grouped rollouts, dataset builder, and RL training loop. |
 
@@ -47,8 +47,9 @@ granting points for tool use would incentivize empty or redundant actions.
 - Ground truth and the host credential file are absent from the model's tools
   and Docker mount. The model's config view redacts secrets. The local DuckDB
   connection denies external file access after host-side source loading.
-  Snowflake previews use the task's EL role; only private grading queries use
-  the host-side administrator connection.
+  Snowflake previews use the task's EL role; private grading uses a host-only
+  connection. The administrator reset mode uses an administrator credential;
+  delegated mode uses the EL role after a one-time database grant.
 - The model cannot run an arbitrary shell command. It can only write bounded
   Airbyte Terraform and SELECT dbt model text, then invoke fixed commands.
   The Terraform tool rejects provisioners, modules, external resources,
@@ -70,8 +71,8 @@ granting points for tool use would incentivize empty or redundant actions.
 The credential-free integration test loads CSV sources, runs a transformation,
 submits, and checks reward `1.0`. Negative tests cover fabricated final
 tables, missing columns, row-count mismatch, private-file access, and rollout
-isolation. Official credentialed verification runs one `trains` rollout after
-the benchmark's Docker/Airbyte/Snowflake setup. A one-step Tinker command uses
+isolation. A credentialed `trains` rollout completed both Airbyte syncs, dbt,
+and private Snowflake grading with reward `1.0`. A one-step Tinker command uses
 the same environment and execution-derived reward. Adding another destination
 requires a `Warehouse` adapter, task loader, and destination runtime; the
 episode and reward code do not change.

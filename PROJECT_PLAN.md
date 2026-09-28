@@ -8,7 +8,7 @@ design document is linked from `README.md`.
 
 - Stateful tool environment, destination adapter, execution-derived reward,
   and Tinker cookbook training recipe.
-- Credential-free end-to-end fixture and 11 passing integration/security tests.
+- Credential-free end-to-end fixture and 14 passing integration/security tests.
 - One live Tinker optimizer step with four local fixture rollouts, each reward
   `1.0`. The equal rewards do not establish model improvement.
 - Windows Docker Desktop, Ubuntu WSL integration, Airbyte 2.3.0, and the
@@ -21,18 +21,18 @@ design document is linked from `README.md`.
   offline, 20 rows and seven columns.
 - A dedicated Snowflake EL user, role, and small auto-suspending warehouse were
   created. The EL user's password is stored locally outside the public repo.
+- The administrator created only the `TRAINS` test database and granted the EL
+  role `USAGE, CREATE SCHEMA` on it. The delegated reset needs no locally
+  stored administrator password.
+- A credentialed official `trains` replay completed Airbyte syncs, dbt, and
+  warehouse grading with execution reward `1.0`.
+- Two one-step Tinker runs on the official task completed and saved checkpoints.
+  The sampled 4B and 9B policies earned zero because their tool trajectories
+  failed to complete valid Terraform and submission within the turn budget.
 
 ## Remaining verification
 
-1. The account owner enters the Snowflake administrator password into the
-   local `setup/destination/snowflake_credential.json`; it must never be pasted
-   into chat or committed. Its `password` field is currently empty.
-2. Reset the `trains` warehouse namespace and apply the validated Terraform
-   plan, then run both Airbyte syncs and the dbt model in a real official
-   rollout. Record the execution reward and repair any integration failures.
-3. Run one Tinker optimization step using the official task's executed
-   Snowflake reward. Update `VALIDATION.md` with the result.
-4. Republish the final reviewed code and validation record to GitHub, and
+1. Republish the final reviewed code and validation record to GitHub, and
    update the Google design document if the architecture changes.
 
 The prepared benchmark sources and local Airbyte workspace survive ordinary

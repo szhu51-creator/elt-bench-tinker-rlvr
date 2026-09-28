@@ -281,4 +281,79 @@ def test_official_reset_grants_only_task_database_usage(tmp_path, monkeypatch):
 
     monkeypatch.setattr("snowflake.connector.connect", lambda **_kwargs: FakeConnection())
     runtime._grant_database_usage()
-    assert calls == ['GRANT USAGE ON DATABASE "books" TO ROLE "AIRBYTE_ROLE"']
+    assert calls == ['GRANT USAGE ON DATABASE "BOOKS" TO ROLE "AIRBYTE_ROLE"']
+
+
+def test_delegated_reset_uses_only_task_schema_and_el_role(tmp_path, monkeypatch):
+    spec, _ = _official_spec(tmp_path)
+    spec.credential_path.write_text(json.dumps({
+        "account": "account-test", "user": "rollout-el-user", "password": "test-secret",
+        "role": "AIRBYTE_ROLE", "warehouse": "AIRBYTE_WAREHOUSE",
+    }), encoding="utf-8")
+    monkeypatch.setenv("ELT_RLVR_SNOWFLAKE_RESET_MODE", "delegated")
+    monkeypatch.setenv("ELT_RLVR_SNOWFLAKE_EL_USER", "rollout-el-user")
+    monkeypatch.setenv("ELT_RLVR_SNOWFLAKE_EL_PASSWORD", "test-secret")
+    monkeypatch.setattr("elt_rlvr.official.shutil.which", lambda _name: "docker")
+    monkeypatch.setattr("elt_rlvr.official.OfficialRuntime._grant_database_usage",
+                        lambda _self: pytest.fail("admin grant must not run"))
+    statements = []
+
+    class FakeConnection:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args):
+            return None
+
+        def cursor(self):
+            return self
+
+        def execute(self, sql):
+            statements.append(sql)
+
+    def connect(**kwargs):
+        assert kwargs["user"] == "rollout-el-user"
+        assert kwargs["role"] == "AIRBYTE_ROLE"
+        return FakeConnection()
+
+    monkeypatch.setattr("snowflake.connector.connect", connect)
+    runtime = OfficialRuntime(spec, tmp_path / "runs")
+    monkeypatch.setattr(runtime, "_command", lambda _argv, timeout: "container started")
+    try:
+        runtime.start()
+        assert statements == [
+            'DROP SCHEMA IF EXISTS "BOOKS"."AIRBYTE_SCHEMA" CASCADE',
+            'CREATE SCHEMA "BOOKS"."AIRBYTE_SCHEMA"',
+        ]
+    finally:
+        runtime.started = False
+        runtime.close()
+
+
+def test_delegated_reset_rejects_wrong_role(tmp_path, monkeypatch):
+    spec, public_config = _official_spec(tmp_path)
+    spec.credential_path.write_text(json.dumps({
+        "user": "template-user", "role": "ACCOUNTADMIN",
+    }), encoding="utf-8")
+    runtime = OfficialRuntime(spec, tmp_path / "runs")
+    runtime.root.mkdir(parents=True)
+    (runtime.root / "config.yaml").write_text(public_config.read_text(), encoding="utf-8")
+    with pytest.raises(ValueError, match="task EL role"):
+        runtime._reset_delegated_schema()
+
+
+def test_terraform_tool_normalizes_task_paths_without_escape(tmp_path):
+    spec, _ = _official_spec(tmp_path)
+    runtime = OfficialRuntime(spec, tmp_path / "runs")
+    (runtime.root / "elt").mkdir(parents=True)
+    runtime.started = True
+    try:
+        assert runtime.write_terraform("_elt/traincars/src.tf", 'resource "airbyte_source_file" "x" {}') == "wrote elt/src.tf"
+        assert (runtime.root / "elt/src.tf").is_file()
+        with pytest.raises(ValueError, match="inside elt"):
+            runtime.write_terraform("elt/../outside.tf", "")
+        with pytest.raises(ValueError, match="main.tf"):
+            runtime.write_terraform("elt/main.tf", "")
+    finally:
+        runtime.started = False
+        runtime.close()

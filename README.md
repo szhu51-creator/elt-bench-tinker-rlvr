@@ -120,11 +120,34 @@ EL role with access only to the task's sources and destination. Airbyte 0.6.5
 provider operations are applied with `-parallelism=1` because concurrent
 credential-cache refresh can crash the provider.
 
+For a Snowflake account where the administrator is signed in only through
+Snowsight, a delegated reset is also supported. An administrator first creates
+the task database and grants its EL role `USAGE, CREATE SCHEMA` on that database.
+Set `ELT_RLVR_SNOWFLAKE_RESET_MODE=delegated` and pass a private JSON credential
+file for that EL user with `--credential-path`. The runtime then drops and
+recreates only the task schema as that role, and private grading connects with
+the same role. The JSON user and role must match the task configuration. This
+mode does not require a locally stored administrator password; keep the EL
+credential file outside the repository.
+
+```bash
+export ELT_RLVR_SNOWFLAKE_RESET_MODE=delegated
+elt-rlvr check-official --official-repo /path/to/ELT-Bench \
+  --task-id trains --credential-path /private/snowflake_el.json
+python -m elt_rlvr.tinker_recipe --official-repo /path/to/ELT-Bench \
+  --task-id trains --credential-path /private/snowflake_el.json \
+  --group-size 2 --max-steps 1 --run-root run_artifacts/official
+```
+
 If the Docker container cannot verify `registry.terraform.io` because of a
 local TLS proxy, create a signed provider mirror from a trusted Linux host with
 `terraform providers mirror /path/to/mirror` in a directory containing the
 benchmark's `main.tf`, then set
 `ELT_RLVR_TERRAFORM_MIRROR=/path/to/mirror` before starting rollouts.
+If an HTTPS inspecting antivirus or proxy re-signs Snowflake certificates for
+Docker containers, export its trusted public root certificate, append it to a
+normal CA bundle, and set `ELT_RLVR_CA_BUNDLE=/path/to/ca-bundle.pem`. The
+runtime mounts this bundle read-only and retains TLS certificate validation.
 
 Use Terraform's `yamldecode(file("../config.yaml"))` to reference the generated
 Airbyte and Snowflake values. Literal credentials, provisioners, modules,
@@ -163,10 +186,11 @@ truth. `ELTEpisode` and the Tinker bridge stay unchanged.
 
 ## Limits
 
-The local DuckDB test, one Tinker optimizer step, and discovery of both `trains`
-Airbyte sources are exercised; see [VALIDATION.md](VALIDATION.md) for results.
-The credentialed Snowflake sync and official Tinker step still need a complete
-administrator credential. The Terraform text filter narrows
+The local DuckDB test, official `trains` Airbyte/Snowflake/dbt replay with
+reward `1.0`, and one-step Tinker optimizations on both local and official
+tasks have run; see [VALIDATION.md](VALIDATION.md) for results. The official
+4B and 9B sampled policies received zero reward, so model quality remains a
+training limitation. The Terraform text filter narrows
 the model's tool surface but is not a substitute for a restricted Snowflake
 role, isolated Airbyte account, or Docker/network policy in a production
 training deployment. Train with benchmark tasks that are disjoint from the

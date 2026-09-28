@@ -49,15 +49,20 @@ class OfficialRuntime:
             self._apply_el_credentials()
             shutil.copy2(Path(__file__).with_name("airbyte_sync.py"), self.root / "rlvr_airbyte_sync.py")
             self._write_dbt_scaffold()
-            # Reuse the benchmark's destination reset exactly; no grader files enter the container.
-            agents_path = self.spec.official_repo / "agents"
-            sys.path.insert(0, str(agents_path))
-            try:
-                from common import prepare_destination
-                prepare_destination("snowflake", self.spec.public_dir, self.spec.credential_path)
-            finally:
-                sys.path.remove(str(agents_path))
-            self._grant_database_usage()
+            if os.environ.get("ELT_RLVR_SNOWFLAKE_RESET_MODE") == "delegated":
+                # The database already exists and the task role has CREATE SCHEMA.
+                # It owns only this task schema; no administrator password is needed.
+                self._reset_delegated_schema()
+            else:
+                # Reuse the benchmark's destination reset exactly; no grader files enter the container.
+                agents_path = self.spec.official_repo / "agents"
+                sys.path.insert(0, str(agents_path))
+                try:
+                    from common import prepare_destination
+                    prepare_destination("snowflake", self.spec.public_dir, self.spec.credential_path)
+                finally:
+                    sys.path.remove(str(agents_path))
+                self._grant_database_usage()
             cache = self.root.parent / "terraform-plugin-cache"
             cache.mkdir(parents=True, exist_ok=True)
             mirror = os.environ.get("ELT_RLVR_TERRAFORM_MIRROR")
@@ -69,6 +74,17 @@ class OfficialRuntime:
                 "-e", "TF_PLUGIN_CACHE_DIR=/tf-plugin-cache",
                 "-w", "/workspace", self.image, "sleep", "infinity",
             ]
+            ca_bundle = os.environ.get("ELT_RLVR_CA_BUNDLE")
+            if ca_bundle:
+                ca_path = Path(ca_bundle).resolve(strict=True)
+                if not ca_path.is_file():
+                    raise ValueError("CA bundle must be a file")
+                cmd[cmd.index("-w"):cmd.index("-w")] = [
+                    "-v", f"{ca_path}:/rlvr-ca.pem:ro",
+                    "-e", "REQUESTS_CA_BUNDLE=/rlvr-ca.pem",
+                    "-e", "SSL_CERT_FILE=/rlvr-ca.pem",
+                    "-e", "CURL_CA_BUNDLE=/rlvr-ca.pem",
+                ]
             if mirror:
                 mirror_path = Path(mirror).resolve(strict=True)
                 if not mirror_path.is_dir():
@@ -123,11 +139,31 @@ class OfficialRuntime:
         assert self.spec.credential_path is not None
         admin = json.loads(self.spec.credential_path.read_text(encoding="utf-8"))
         cfg = yaml.safe_load((self.root / "config.yaml").read_text(encoding="utf-8"))["snowflake"]["config"]
-        database = '"' + str(cfg["database"]).replace('"', '""') + '"'
-        role = '"' + str(cfg["role"]).replace('"', '""') + '"'
+        database = '"' + str(cfg["database"]).upper().replace('"', '""') + '"'
+        role = '"' + str(cfg["role"]).upper().replace('"', '""') + '"'
         with snowflake.connector.connect(**admin) as connection:
             with connection.cursor() as cursor:
                 cursor.execute(f"GRANT USAGE ON DATABASE {database} TO ROLE {role}")
+
+    def _reset_delegated_schema(self) -> None:
+        """Reset only the task schema using the restricted EL role."""
+        import snowflake.connector
+
+        from .backend import valid_identifier
+
+        assert self.spec.credential_path is not None
+        credential = json.loads(self.spec.credential_path.read_text(encoding="utf-8"))
+        cfg = yaml.safe_load((self.root / "config.yaml").read_text(encoding="utf-8"))["snowflake"]["config"]
+        if credential.get("role", "").upper() != str(cfg["role"]).upper():
+            raise ValueError("Delegated reset credential must use the task EL role")
+        if credential.get("user", "").upper() != str(cfg.get("user") or cfg.get("username")).upper():
+            raise ValueError("Delegated reset credential must use the task EL user")
+        database = valid_identifier(str(cfg["database"])).upper()
+        schema = valid_identifier(str(cfg["schema"])).upper()
+        with snowflake.connector.connect(**credential) as connection:
+            with connection.cursor() as cursor:
+                cursor.execute(f'DROP SCHEMA IF EXISTS "{database}"."{schema}" CASCADE')
+                cursor.execute(f'CREATE SCHEMA "{database}"."{schema}"')
 
     def _write_dbt_scaffold(self) -> None:
         cfg = yaml.safe_load((self.root / "config.yaml").read_text(encoding="utf-8"))
@@ -169,8 +205,15 @@ class OfficialRuntime:
     def write_terraform(self, filename: str, text: str) -> str:
         if not self.started:
             raise RuntimeError("Runtime is not started")
-        if filename == "main.tf" or not filename.endswith(".tf") or "/" in filename or "\\" in filename:
-            raise ValueError("Write only a new elt/*.tf file; main.tf is immutable")
+        parts = filename.replace("\\", "/").split("/")
+        if len(parts) > 1:
+            if parts[0] not in {"elt", "_elt"} or not all(
+                re.fullmatch(r"[A-Za-z_][A-Za-z0-9_-]*", part) for part in parts[1:-1]
+            ):
+                raise ValueError("Terraform path must be inside elt/ and cannot traverse directories")
+        basename = parts[-1]
+        if basename == "main.tf" or not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_-]*\.tf", basename):
+            raise ValueError("Use a new .tf filename such as trains.tf; main.tf is immutable")
         if len(text) > 100_000:
             raise ValueError("Terraform file is too large")
         lower = text.lower()
@@ -187,8 +230,8 @@ class OfficialRuntime:
             raise ValueError("Only the Airbyte provider is allowed")
         if any(secret in text for secret in self._secrets if len(secret) > 3):
             raise ValueError("Do not embed credentials in Terraform; reference config.yaml with yamldecode")
-        (self.root / "elt" / filename).write_text(text, encoding="utf-8")
-        return f"wrote elt/{filename}"
+        (self.root / "elt" / basename).write_text(text, encoding="utf-8")
+        return f"wrote elt/{basename}"
 
     def run_extract_load(self) -> str:
         if not self.started:

@@ -46,10 +46,36 @@ claiming that Snowflake or Airbyte loading worked. The full project test suite
 passed 11 tests on Windows and Ubuntu, including a test that Snowflake preview
 queries use the task EL role rather than the administrator connection.
 
-The credentialed Snowflake sync, official warehouse reward, and official
-Tinker optimization step remain pending a locally configured Snowflake
-administrator password. The Airbyte file source uses a local image containing
+On 2026-09-28, the account owner approved a narrow database grant. The
+administrator created `TRAINS` in Snowflake and granted `USAGE, CREATE SCHEMA`
+on that database to `AIRBYTE_ROLE`. The official runtime then reset only
+`TRAINS.AIRBYTE_SCHEMA` with the existing dedicated `AIRBYTE_USER`; no
+administrator password was stored locally. The credentialed `trains` replay
+successfully created the Snowflake destination and both Airbyte connections,
+completed two real sync jobs, loaded `cars` and `train`, ran the dbt model, and
+returned execution reward `1.0` (`raw_fraction=1.0`, `target/trains=1.0`).
+The resulting target had 20 rows. The full test suite passed 14 tests after
+adding coverage for delegated reset, role checks, and safe Terraform path
+normalization.
+
+Two live Tinker one-step optimization runs also used the official `trains`
+environment and saved training/sampler checkpoints. The first used
+`Qwen/Qwen3.5-4B`; both model rollouts exhausted 12 turns after repeatedly
+passing path-qualified Terraform filenames. The tool now safely normalizes
+those task-local names. The second used `Qwen/Qwen3.5-9B` with the fix and 16
+turns. It wrote Terraform files, but its HCL did not pass the Airbyte provider
+0.6.5 schema checks; neither model rollout submitted. Both official training
+steps completed with execution reward `0.0` and are evidence of the real
+optimization path, not evidence that these base models learned the task.
+The separate deterministic official replay above verifies that a valid
+end-to-end policy can earn reward `1.0`.
+
+This machine's Norton HTTPS scanner re-signs Snowflake certificates seen by
+Docker and kind pods. The host's trusted public Norton root was exported to a
+private local file, added to a private CA bundle for the ELT execution image,
+and imported into a local derived Airbyte Snowflake connector image. TLS
+verification remained enabled. The Airbyte file source uses a local image containing
 the benchmark's public CSV because this machine's Docker network encounters
 certificate interception for the original Google Drive URL. The local
-Terraform mirror avoids disabling certificate verification. No credentials or
-Terraform state are published in this repository.
+Terraform mirror avoids disabling certificate verification. No credentials,
+CA files, or Terraform state are published in this repository.
