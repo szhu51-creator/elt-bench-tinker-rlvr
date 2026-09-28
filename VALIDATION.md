@@ -81,7 +81,9 @@ suite passed 15 tests, including plan generation and source validation.
 
 An audit against the professor's source document found that the upstream
 `trains` file source uses a public Google Drive HTTPS URL, while this machine's
-live run used a byte-equivalent local mirror to work around intercepted TLS.
+live run used a local mirror of the benchmark's bundled public `train.csv` to
+work around intercepted TLS. The local mirror and bundled file have the same
+SHA-256 hash.
 The structured plan now selects Airbyte's `https_public_web` provider for the
 unmodified upstream URL and `local_filesystem_limited` for local paths. The
 plan generated with the upstream URL passed `terraform validate` against the
