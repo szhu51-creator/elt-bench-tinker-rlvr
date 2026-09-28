@@ -7,6 +7,7 @@ from types import SimpleNamespace
 
 import pytest
 
+from elt_rlvr.backend import SnowflakeWarehouse
 from elt_rlvr.episode import ELTEpisode
 from elt_rlvr.official import OfficialRuntime
 from elt_rlvr.reward import compare_tables
@@ -119,6 +120,7 @@ def _official_spec(tmp_path):
 def _stub_official_prerequisites(monkeypatch):
     monkeypatch.setattr("elt_rlvr.official.shutil.which", lambda _name: "docker")
     monkeypatch.setitem(sys.modules, "common", SimpleNamespace(prepare_destination=lambda *_args: None))
+    monkeypatch.setattr("elt_rlvr.official.OfficialRuntime._grant_database_usage", lambda _self: None)
 
 
 def test_official_el_credentials_override_private_rollout_copy(tmp_path, monkeypatch):
@@ -200,3 +202,83 @@ def test_official_close_cleans_secrets_when_docker_remove_fails(tmp_path, monkey
     assert not (runtime.root / "config.yaml").exists()
     assert not (runtime.root / "elt" / "profiles.yml").exists()
     assert not (runtime.root / "elt" / "terraform.tfstate").exists()
+
+
+def test_official_preview_does_not_use_admin_connection(tmp_path, monkeypatch):
+    spec, _ = _official_spec(tmp_path)
+    calls = []
+    executed = []
+
+    class FakeCursor:
+        description = [("VALUE",)]
+
+        def __init__(self, role):
+            self.role = role
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args):
+            return None
+
+        def execute(self, sql):
+            executed.append((self.role, sql))
+
+        def fetchall(self):
+            return [(1,)]
+
+    class FakeConnection:
+        def __init__(self, role):
+            self.role = role
+
+        def cursor(self):
+            return FakeCursor(self.role)
+
+        def close(self):
+            return None
+
+    def connect(**kwargs):
+        calls.append(kwargs)
+        return FakeConnection(kwargs.get("role", "admin"))
+
+    monkeypatch.setattr("snowflake.connector.connect", connect)
+    warehouse = SnowflakeWarehouse(spec)
+    try:
+        warehouse.preview("SELECT 1")
+        assert len(calls) == 2
+        assert calls[1]["role"] == "AIRBYTE_ROLE"
+        assert executed == [("AIRBYTE_ROLE", "SELECT * FROM (SELECT 1) q LIMIT 10")]
+    finally:
+        warehouse.close()
+
+
+def test_official_reset_grants_only_task_database_usage(tmp_path, monkeypatch):
+    spec, public_config_path = _official_spec(tmp_path)
+    runtime = OfficialRuntime(spec, tmp_path / "runs")
+    runtime.root.mkdir(parents=True)
+    (runtime.root / "config.yaml").write_text(public_config_path.read_text())
+    calls = []
+
+    class FakeCursor:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args):
+            return None
+
+        def execute(self, sql):
+            calls.append(sql)
+
+    class FakeConnection:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args):
+            return None
+
+        def cursor(self):
+            return FakeCursor()
+
+    monkeypatch.setattr("snowflake.connector.connect", lambda **_kwargs: FakeConnection())
+    runtime._grant_database_usage()
+    assert calls == ['GRANT USAGE ON DATABASE "books" TO ROLE "AIRBYTE_ROLE"']

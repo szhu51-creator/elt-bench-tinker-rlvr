@@ -8,7 +8,8 @@ described in `data_model.yaml`. The agent must configure connections and sync
 jobs, produce the target SQL, run it, inspect errors, and submit. A rollout is
 **stateful**: Terraform files, Airbyte connections/jobs, the warehouse, dbt
 models, and execution logs change after each action. A fresh rollout gets a
-fresh workspace and reset warehouse namespace.
+fresh execution container and reset warehouse namespace. Airbyte resources
+live in a shared local workspace; rollouts for a task are serialized.
 
 The initial prompt exposes the task's source names and model descriptions.
 Tools expose bounded reads of the generated input bundle, writes to one new
@@ -46,6 +47,8 @@ granting points for tool use would incentivize empty or redundant actions.
 - Ground truth and the host credential file are absent from the model's tools
   and Docker mount. The model's config view redacts secrets. The local DuckDB
   connection denies external file access after host-side source loading.
+  Snowflake previews use the task's EL role; only private grading queries use
+  the host-side administrator connection.
 - The model cannot run an arbitrary shell command. It can only write bounded
   Airbyte Terraform and SELECT dbt model text, then invoke fixed commands.
   The Terraform tool rejects provisioners, modules, external resources,
@@ -56,7 +59,9 @@ granting points for tool use would incentivize empty or redundant actions.
   fabricating a final table alone cannot earn it.
 - Local rollouts use separate DuckDB files. Official rollouts of one Snowflake
   task are serialized because the benchmark resets a shared task namespace.
-  Terraform provider downloads use a shared plugin cache; grading runs once
+  Terraform provider downloads use a shared plugin cache or signed local mirror;
+  Terraform apply is serialized to avoid the provider's credential-cache race.
+  Airbyte 2.3 uses client-credential tokens for sync requests. Grading runs once
   at terminal submission, not after every tool call. Warehouse previews are
   capped at 20 rows and do not reveal ground truth.
 
@@ -65,7 +70,7 @@ granting points for tool use would incentivize empty or redundant actions.
 The credential-free integration test loads CSV sources, runs a transformation,
 submits, and checks reward `1.0`. Negative tests cover fabricated final
 tables, missing columns, row-count mismatch, private-file access, and rollout
-isolation. Official credentialed verification runs one `books` rollout after
+isolation. Official credentialed verification runs one `trains` rollout after
 the benchmark's Docker/Airbyte/Snowflake setup. A one-step Tinker command uses
 the same environment and execution-derived reward. Adding another destination
 requires a `Warehouse` adapter, task loader, and destination runtime; the

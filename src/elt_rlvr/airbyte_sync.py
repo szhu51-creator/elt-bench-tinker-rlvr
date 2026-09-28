@@ -26,12 +26,41 @@ def main() -> int:
         print("No Airbyte connection IDs in Terraform state", file=sys.stderr)
         return 2
     base = str(config["server_url"]).rstrip("/")
-    auth = base64.b64encode(f"{config['username']}:{config['password']}".encode()).decode()
+    basic_auth = None
+    if not (config.get("client_id") and config.get("client_secret")):
+        basic_auth = base64.b64encode(
+            f"{config['username']}:{config['password']}".encode()
+        ).decode()
+    token = ""
+    token_expiry = 0.0
+
+    def bearer_token() -> str:
+        nonlocal token, token_expiry
+        if time.monotonic() < token_expiry - 30:
+            return token
+        body = json.dumps({
+            "client_id": config["client_id"],
+            "client_secret": config["client_secret"],
+            "grant-type": "client_credentials",
+        }).encode()
+        req = Request(
+            base + "/applications/token", data=body, method="POST",
+            headers={"accept": "application/json", "content-type": "application/json"},
+        )
+        with urlopen(req, timeout=30) as response:
+            reply = json.load(response)
+        token = reply["access_token"]
+        token_expiry = time.monotonic() + float(reply.get("expires_in", 180))
+        return token
 
     def request(method: str, path: str, payload: dict | None = None) -> dict:
         body = json.dumps(payload).encode() if payload is not None else None
+        auth_header = (
+            f"Basic {basic_auth}" if basic_auth is not None
+            else f"Bearer {bearer_token()}"
+        )
         req = Request(base + path, data=body, method=method, headers={
-            "Authorization": f"Basic {auth}", "accept": "application/json",
+            "Authorization": auth_header, "accept": "application/json",
             "content-type": "application/json",
         })
         with urlopen(req, timeout=30) as response:

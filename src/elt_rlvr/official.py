@@ -5,6 +5,7 @@ from __future__ import annotations
 import shutil
 import re
 import os
+import json
 import subprocess
 import sys
 import uuid
@@ -56,8 +57,10 @@ class OfficialRuntime:
                 prepare_destination("snowflake", self.spec.public_dir, self.spec.credential_path)
             finally:
                 sys.path.remove(str(agents_path))
+            self._grant_database_usage()
             cache = self.root.parent / "terraform-plugin-cache"
             cache.mkdir(parents=True, exist_ok=True)
+            mirror = os.environ.get("ELT_RLVR_TERRAFORM_MIRROR")
             cmd = [
                 "docker", "run", "-d", "--rm", "--name", self.container,
                 "--network", self.network,
@@ -66,6 +69,27 @@ class OfficialRuntime:
                 "-e", "TF_PLUGIN_CACHE_DIR=/tf-plugin-cache",
                 "-w", "/workspace", self.image, "sleep", "infinity",
             ]
+            if mirror:
+                mirror_path = Path(mirror).resolve(strict=True)
+                if not mirror_path.is_dir():
+                    raise ValueError("Terraform provider mirror must be a directory")
+                cli_config = self.root / "terraform.rc"
+                cli_config.write_text(
+                    'provider_installation {\n'
+                    '  filesystem_mirror {\n'
+                    '    path = "/tf-mirror"\n'
+                    '    include = ["registry.terraform.io/airbytehq/airbyte"]\n'
+                    '  }\n'
+                    '  direct {\n'
+                    '    exclude = ["registry.terraform.io/airbytehq/airbyte"]\n'
+                    '  }\n'
+                    '}\n',
+                    encoding="utf-8",
+                )
+                cmd[cmd.index("-w"):cmd.index("-w")] = [
+                    "-v", f"{mirror_path}:/tf-mirror:ro",
+                    "-e", "TF_CLI_CONFIG_FILE=/workspace/terraform.rc",
+                ]
             self._command(cmd, timeout=60)
             self.started = True
         except BaseException:
@@ -92,12 +116,28 @@ class OfficialRuntime:
         config_path.write_text(yaml.safe_dump(config, sort_keys=False), encoding="utf-8")
         self._secrets.append(password)
 
+    def _grant_database_usage(self) -> None:
+        """Let the task's EL role access the database created by the reset helper."""
+        import snowflake.connector
+
+        assert self.spec.credential_path is not None
+        admin = json.loads(self.spec.credential_path.read_text(encoding="utf-8"))
+        cfg = yaml.safe_load((self.root / "config.yaml").read_text(encoding="utf-8"))["snowflake"]["config"]
+        database = '"' + str(cfg["database"]).replace('"', '""') + '"'
+        role = '"' + str(cfg["role"]).replace('"', '""') + '"'
+        with snowflake.connector.connect(**admin) as connection:
+            with connection.cursor() as cursor:
+                cursor.execute(f"GRANT USAGE ON DATABASE {database} TO ROLE {role}")
+
     def _write_dbt_scaffold(self) -> None:
         cfg = yaml.safe_load((self.root / "config.yaml").read_text(encoding="utf-8"))
         warehouse = cfg["snowflake"]["config"]
         self._secrets = [str(value) for key, value in warehouse.items()
                          if key.lower() in {"password", "secret", "token", "access_key_id"} and value]
-        self._secrets += [str(cfg["Airbyte"]["config"].get("password", ""))]
+        self._secrets += [
+            str(cfg["Airbyte"]["config"].get(key, ""))
+            for key in ("password", "client_id", "client_secret")
+        ]
         elt = self.root / "elt"
         (elt / "models").mkdir(parents=True, exist_ok=True)
         (elt / "dbt_project.yml").write_text(
@@ -161,7 +201,7 @@ class OfficialRuntime:
             timeout=300,
         )
         apply = self._command(
-            ["docker", "exec", self.container, "terraform", "-chdir=/workspace/elt", "apply", "-auto-approve", "-input=false"],
+            ["docker", "exec", self.container, "terraform", "-chdir=/workspace/elt", "apply", "-auto-approve", "-input=false", "-parallelism=1"],
             timeout=900,
         )
         sync = self._command(

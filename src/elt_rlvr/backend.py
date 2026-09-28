@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import Protocol
 
 import pandas as pd
+import yaml
 
 from .spec import TaskSpec
 
@@ -117,9 +118,24 @@ class SnowflakeWarehouse:
         self.spec = spec
         cfg = json.loads(spec.credential_path.read_text(encoding="utf-8"))
         self.conn = snowflake.connector.connect(**cfg)
+        warehouse = yaml.safe_load((spec.public_dir / "config.yaml").read_text(encoding="utf-8"))["snowflake"]["config"]
+        try:
+            self.preview_conn = snowflake.connector.connect(
+                account=warehouse["account"],
+                user=warehouse.get("user") or warehouse["username"],
+                password=warehouse["password"],
+                role=warehouse["role"],
+                warehouse=warehouse["warehouse"],
+                database=warehouse["database"],
+                schema=warehouse["schema"],
+            )
+        except BaseException:
+            self.conn.close()
+            raise
 
-    def _query(self, sql: str) -> pd.DataFrame:
-        with self.conn.cursor() as cur:
+    def _query(self, sql: str, *, preview: bool = False) -> pd.DataFrame:
+        connection = self.preview_conn if preview else self.conn
+        with connection.cursor() as cur:
             cur.execute(sql)
             return pd.DataFrame(cur.fetchall(), columns=[d[0] for d in cur.description])
 
@@ -152,7 +168,8 @@ class SnowflakeWarehouse:
         query = select_only(query)
         # Read-only role grants must restrict access to the current task namespace.
         limit = min(max(limit, 1), 20)
-        return self._query(f"SELECT * FROM ({query}) q LIMIT {limit}")
+        return self._query(f"SELECT * FROM ({query}) q LIMIT {limit}", preview=True)
 
     def close(self) -> None:
+        self.preview_conn.close()
         self.conn.close()

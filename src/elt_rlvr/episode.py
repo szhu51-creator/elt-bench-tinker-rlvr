@@ -63,7 +63,7 @@ class ELTEpisode:
             cfg = yaml.safe_load(text)
             def redact(obj: Any) -> Any:
                 if isinstance(obj, dict):
-                    return {k: ("[configured]" if any(s in k.lower() for s in ("password", "secret", "token", "access_key")) else redact(v)) for k, v in obj.items()}
+                    return {k: ("[configured]" if any(s in k.lower() for s in ("password", "secret", "token", "access_key", "client_id")) else redact(v)) for k, v in obj.items()}
                 if isinstance(obj, list):
                     return [redact(x) for x in obj]
                 return obj

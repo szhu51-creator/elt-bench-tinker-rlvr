@@ -71,7 +71,9 @@ These prerequisites follow the [official ELT-Bench setup](https://github.com/uiu
 1. Clone the ELT-Bench repository; set up Docker, Airbyte, source containers,
    and a Snowflake destination as described there.
 2. Populate `setup/airbyte/airbyte_credential.json` and
-   `setup/destination/snowflake_credential.json` outside this repository.
+   `setup/destination/snowflake_credential.json` outside this repository. For
+   Airbyte 2.x, put its `client_id` and `client_secret` in the generated
+   `Airbyte.config`; the runtime obtains and refreshes bearer tokens.
 3. Generate inputs with `python setup/write_config.py --destination snowflake`.
 4. Download the public `gt_snowflake/**` dataset under
    `<ELT-Bench>/ground_truth/` using the official README command.
@@ -90,7 +92,7 @@ Install the warehouse connector and check a task:
 
 ```bash
 pip install -e '.[train,snowflake,test]'
-elt-rlvr check-official --official-repo /path/to/ELT-Bench --task-id books
+elt-rlvr check-official --official-repo /path/to/ELT-Bench --task-id trains
 ```
 
 Run one Tinker optimization step on the official task:
@@ -98,7 +100,7 @@ Run one Tinker optimization step on the official task:
 ```bash
 python -m elt_rlvr.tinker_recipe \
   --official-repo /path/to/ELT-Bench \
-  --task-id books --group-size 2 --max-steps 1 \
+  --task-id trains --group-size 2 --max-steps 1 \
   --run-root run_artifacts/official
 ```
 
@@ -110,6 +112,19 @@ container; ground truth and the host credential JSON stay outside. The
 container can write only the task workspace. The model can write an Airbyte
 Terraform file and target dbt model SQL, run the fixed Terraform/Airbyte/dbt
 commands, inspect read-only warehouse queries, then submit.
+
+The Snowflake reset uses a host-only administrative credential and grants the
+task database's `USAGE` privilege to its EL role. Warehouse previews use that
+EL role, while private grading uses the host-only connection. Configure the
+EL role with access only to the task's sources and destination. Airbyte 0.6.5
+provider operations are applied with `-parallelism=1` because concurrent
+credential-cache refresh can crash the provider.
+
+If the Docker container cannot verify `registry.terraform.io` because of a
+local TLS proxy, create a signed provider mirror from a trusted Linux host with
+`terraform providers mirror /path/to/mirror` in a directory containing the
+benchmark's `main.tf`, then set
+`ELT_RLVR_TERRAFORM_MIRROR=/path/to/mirror` before starting rollouts.
 
 Use Terraform's `yamldecode(file("../config.yaml"))` to reference the generated
 Airbyte and Snowflake values. Literal credentials, provisioners, modules,
@@ -148,10 +163,10 @@ truth. `ELTEpisode` and the Tinker bridge stay unchanged.
 
 ## Limits
 
-The local DuckDB test and one Tinker optimizer step are exercised; see
-[VALIDATION.md](VALIDATION.md) for results. Official Snowflake execution
-requires warehouse credentials and Docker/Airbyte services and has not been
-run locally. The Terraform text filter narrows
+The local DuckDB test, one Tinker optimizer step, and discovery of both `trains`
+Airbyte sources are exercised; see [VALIDATION.md](VALIDATION.md) for results.
+The credentialed Snowflake sync and official Tinker step still need a complete
+administrator credential. The Terraform text filter narrows
 the model's tool surface but is not a substitute for a restricted Snowflake
 role, isolated Airbyte account, or Docker/network policy in a production
 training deployment. Train with benchmark tasks that are disjoint from the
