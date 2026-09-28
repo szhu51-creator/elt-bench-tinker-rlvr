@@ -152,3 +152,5 @@ training deployment. Train with benchmark tasks that are disjoint from the
 evaluation set to reduce answer contamination.
 
 See [DESIGN.md](DESIGN.md) for the concise implementation design.
+See [PROJECT_PLAN.md](PROJECT_PLAN.md) for current progress and the Windows
+restart-to-official-rollout checklist.
