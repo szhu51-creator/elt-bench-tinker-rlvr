@@ -50,6 +50,10 @@ pip install -e '.[train,test]'
 python -m elt_rlvr.tinker_recipe --max-steps 1 --group-size 4
 ```
 
+Tinker requires the organization to have an available balance or an enterprise
+agreement before it accepts training requests; see the
+[official billing guidance](https://tinker-docs.thinkingmachines.ai/tinker/data-model/).
+
 This reuses `tinker_cookbook.tool_use.build_agent_tool_env`,
 `EnvGroupBuilder`, `RLDatasetBuilder`, and `tinker_cookbook.rl.train.main`.
 The model's tool calls change a per-rollout warehouse. The terminal reward
