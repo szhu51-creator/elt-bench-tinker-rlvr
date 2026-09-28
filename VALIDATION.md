@@ -97,8 +97,12 @@ budget. Both sampled trajectories completed EL, dbt, and terminal submission.
 The group mean execution reward was `0.885714`; the raw-table fraction was
 `1.0` and target-column fraction was `0.857143`. Tinker saved a training-state
 and sampler checkpoint and reported successful completion. This shows a useful
-positive official-task training signal, but the sampled policy did not reach
-the full target score and one step does not establish learning or transfer.
+positive official-task execution reward, but both per-rollout rewards were
+`0.885714`. The cookbook centers rewards within each group, so this group's
+relative advantages were zero. The step verifies the reward-to-optimizer path
+and checkpoint creation; it does not demonstrate a nonzero reward-driven
+gradient, model improvement, or transfer. The sampled policy also did not
+reach the full target score.
 
 This machine's Norton HTTPS scanner re-signs Snowflake certificates seen by
 Docker and kind pods. The host's trusted public Norton root was exported to a

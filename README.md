@@ -196,7 +196,9 @@ tasks have run; see [VALIDATION.md](VALIDATION.md) for results. Earlier
 official 4B and 9B sampled policies received zero reward with raw HCL. With
 structured source selection, a 9B group of two completed EL and submission
 with mean execution reward `0.885714`, below the full target score. One step
-does not establish convergence or transfer to other tasks. The Terraform text
+used equal rewards across both rollouts, so its within-group advantage was
+zero and it does not establish reward-driven improvement or transfer to other
+tasks. The Terraform text
 filter narrows the model's tool surface but is not a substitute for a
 restricted Snowflake role, isolated Airbyte account, or Docker/network policy in a production
 training deployment. Train with benchmark tasks that are disjoint from the

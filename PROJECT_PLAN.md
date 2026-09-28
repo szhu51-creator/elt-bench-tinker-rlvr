@@ -36,7 +36,8 @@ design document is linked from `README.md`.
   failed to complete valid Terraform and submission within the turn budget.
 - With the structured tool, a further official 9B Tinker step completed two
   submitted trajectories with mean execution reward `0.885714` and saved
-  checkpoints. The target score was `0.857143` on average.
+  checkpoints. The target score was `0.857143` on average. Both rewards were
+  equal, so the cookbook's within-group relative advantages were zero.
 
 ## Remaining research
 
@@ -46,7 +47,9 @@ support, training time, and compute credits. The three specified validation
 paths have been executed, but one training step does not establish a general
 ELT-solving policy. A live sync from the upstream `trains` HTTPS CSV URL also
 remains unverified on this machine because its network intercepts TLS; the
-upstream URL's generated Terraform plan has passed provider validation.
+upstream URL's generated Terraform plan has passed provider validation. To
+demonstrate reward-driven learning, collect a group with varied execution
+rewards and measure held-out performance before and after optimization.
 
 The prepared benchmark sources and local Airbyte workspace survive ordinary
 Docker Desktop restarts. The dedicated source service is configured to
