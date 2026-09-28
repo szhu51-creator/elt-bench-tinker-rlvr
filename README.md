@@ -185,7 +185,8 @@ when present, as the official evaluator does.
 Implement `Warehouse.count_raw`, `fetch_target`, `preview`, and `close` for a
 new destination; add a runtime that resets its namespace and executes EL/dbt.
 The `TaskSpec` loader maps the destination's generated input bundle and ground
-truth. `ELTEpisode` and the Tinker bridge stay unchanged.
+truth. Add a small destination-dispatch branch in `ELTEpisode` and the Tinker
+bridge; the state transitions and execution-derived reward stay reusable.
 
 ## Limits
 

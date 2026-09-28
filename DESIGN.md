@@ -79,4 +79,5 @@ isolation. A credentialed `trains` rollout completed both Airbyte syncs, dbt,
 and private Snowflake grading with reward `1.0`. A one-step Tinker command uses
 the same environment and execution-derived reward. Adding another destination
 requires a `Warehouse` adapter, task loader, and destination runtime; the
-episode and reward code do not change.
+episode and Tinker bridge need a small dispatch branch, while reward logic
+stays unchanged.
